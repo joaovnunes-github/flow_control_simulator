@@ -55,9 +55,10 @@ def flow_control_simulation(protocol: ProtocolsEnum, sequence_of_bits: int, numb
                 packet.retransmission = retransmission
                 sender_channel_queue.put(packet)
                 try:
-                    acknowledged = sender_queue.get(block=True, timeout=0.3)
+                    acknowledged = sender_queue.get(block=True, timeout=1)
                     sequence_number = int(not sequence_number)
                 except Empty:
+                    print(f"Note over A : TIMEOUT ({packet.payload})")
                     retransmission = True
                     continue
         quit_signal.put(1)
@@ -78,10 +79,9 @@ def flow_control_simulation(protocol: ProtocolsEnum, sequence_of_bits: int, numb
             packet_counter_updater_queue.put(1, block=True)
             if packet_counter in lost_packets:
                 print(f"A -x B : ({packet.payload}) Frame {packet.sequence_number}")
-                print(f"Note over A : TIMEOUT ({packet.payload})")
                 continue
             print(
-                f"A ->> B : ({packet.payload}) Frame {packet.sequence_number} {'[RET]' if packet.retransmission else ''}"
+                f"A ->> B : ({packet.payload}) Frame {packet.sequence_number} {'(RET)' if packet.retransmission else ''}"
             )
             receiver_queue.put(packet)
 
@@ -90,6 +90,7 @@ def flow_control_simulation(protocol: ProtocolsEnum, sequence_of_bits: int, numb
             packet = receiver_channel_queue.get(block=True)
             packet_counter_updater_queue.put(1, block=True)
             if packet_counter in lost_packets:
+                print(f"B --x A : Ack {packet}")
                 continue
             print(f"B -->> A : Ack {packet}")
             sender_queue.put(packet)
