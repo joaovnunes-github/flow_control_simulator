@@ -11,6 +11,17 @@ class ProtocolsEnum(Enum):
     SELECTIVE_REPEAT_ARQ = "sr"
 
 
+class Packet:
+    payload: str
+    retransmission: bool
+    sequence_number: int
+
+    def __init__(self, payload: str = "", retransmission: bool = False, sequence_number: int = 0):
+        self.payload: str = payload
+        self.retransmission: bool = retransmission
+        self.sequence_number: int = sequence_number
+
+
 def flow_control_simulation(protocol: ProtocolsEnum, sequence_of_bits: int, number_of_frames: int,
                             lost_packets: List[int]):
     if protocol == ProtocolsEnum.STOP_AND_WAIT_ARQ:
@@ -37,12 +48,11 @@ def flow_control_simulation(protocol: ProtocolsEnum, sequence_of_bits: int, numb
             payload = packages.get()
             acknowledged = False
             retransmission = False
+
+            packet = Packet(payload=payload, retransmission=retransmission, sequence_number=sequence_number)
+
             while not acknowledged:
-                packet = {
-                    "sequence_number": sequence_number,
-                    "payload": payload,
-                    "retransmission": retransmission
-                }
+                packet.retransmission = retransmission
                 sender_channel_queue.put(packet)
                 try:
                     acknowledged = sender_queue.get(block=True, timeout=0.3)
@@ -57,7 +67,7 @@ def flow_control_simulation(protocol: ProtocolsEnum, sequence_of_bits: int, numb
         expected_sequence_number = 0
         while True:
             packet = receiver_queue.get(block=True)
-            sequence_number = int(packet["sequence_number"])
+            sequence_number = int(packet.sequence_number)
             if sequence_number == expected_sequence_number:
                 expected_sequence_number = int(not expected_sequence_number)
             receiver_channel_queue.put(str(expected_sequence_number))
@@ -67,11 +77,12 @@ def flow_control_simulation(protocol: ProtocolsEnum, sequence_of_bits: int, numb
             packet = sender_channel_queue.get(block=True)
             packet_counter_updater_queue.put(1, block=True)
             if packet_counter in lost_packets:
-                print(f"A -x B: ({packet['payload']}) Frame {packet['sequence_number']}")
-                print(f"Note over A : TIMEOUT ({packet['payload']})")
+                print(f"A -x B: ({packet.payload}) Frame {packet.sequence_number}")
+                print(f"Note over A : TIMEOUT ({packet.payload})")
                 continue
             print(
-                f"A ->> B: ({packet['payload']}) Frame {packet['sequence_number']} {'[RET]' if packet['retransmission'] else ''}")
+                f"A ->> B: ({packet.payload}) Frame {packet.sequence_number} {'[RET]' if packet.retransmission else ''}"
+            )
             receiver_queue.put(packet)
 
     def receiver_listen_and_forward():
