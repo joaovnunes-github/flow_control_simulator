@@ -82,8 +82,9 @@ def flow_control_simulation(protocol: ProtocolsEnum, sequence_of_bits: int, numb
     def packet_counter_updater():
         global packet_counter
         while True:
-            packet_counter_updater_queue.get(block=True)
-            packet_counter += 1
+            if not packet_counter_updater_queue.empty():
+                packet_counter += 1
+                packet_counter_updater_queue.get(block=True)
 
     protocol_functions_dictionary = {
         ProtocolsEnum.STOP_AND_WAIT_ARQ: {"sender_function": saw_sender, "receiver_function": saw_receiver}
