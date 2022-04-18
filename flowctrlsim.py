@@ -27,7 +27,7 @@ def flow_control_simulation(protocol: ProtocolsEnum, sequence_of_bits: int, numb
     packet_counter_updater_queue = Queue(maxsize=1)
 
     packages = Queue(maxsize=number_of_frames)
-    for i in range(1, number_of_frames):
+    for i in range(1, number_of_frames + 1):
         packages.put(i)
 
     def saw_sender():
@@ -35,18 +35,20 @@ def flow_control_simulation(protocol: ProtocolsEnum, sequence_of_bits: int, numb
         while not packages.empty():
             # Save package in case it needs to be resent
             payload = packages.get()
-            packet = str(sequence_number) + str(payload)
-            ack = False
-            while not ack:
-                print(
-                    f"Envio do frame {payload} com seq {sequence_number}: A ->> B: ({payload}) Frame {sequence_number}")
+            acknowledged = False
+            retransmission = False
+            while not acknowledged:
+                packet = {
+                    "sequence_number": sequence_number,
+                    "payload": payload,
+                    "retransmission": retransmission
+                }
                 sender_channel_queue.put(packet)
                 try:
-                    ack = sender_queue.get(block=True, timeout=2)
+                    acknowledged = sender_queue.get(block=True, timeout=0.3)
                     sequence_number = int(not sequence_number)
                 except Empty:
-                    print(
-                        f"Timeout para receber ack do frame {payload}: Note over A : TIMEOUT ({payload})")
+                    retransmission = True
                     continue
         quit_signal.put(1)
 
@@ -55,19 +57,21 @@ def flow_control_simulation(protocol: ProtocolsEnum, sequence_of_bits: int, numb
         expected_sequence_number = 0
         while True:
             packet = receiver_queue.get(block=True)
-            sequence_number = int(packet[0])
-            ack = str(sequence_number) + "1"
+            sequence_number = int(packet["sequence_number"])
             if sequence_number == expected_sequence_number:
                 expected_sequence_number = int(not expected_sequence_number)
-            print(f"ACK do frame {sequence_number}: B -->> A: ACK {sequence_number + 1}")
-            receiver_channel_queue.put(ack)
+            receiver_channel_queue.put(str(expected_sequence_number))
 
     def sender_listen_and_forward():
         while True:
             packet = sender_channel_queue.get(block=True)
             packet_counter_updater_queue.put(1, block=True)
             if packet_counter in lost_packets:
+                print(f"A -x B: ({packet['payload']}) Frame {packet['sequence_number']}")
+                print(f"Note over A : TIMEOUT ({packet['payload']})")
                 continue
+            print(
+                f"A ->> B: ({packet['payload']}) Frame {packet['sequence_number']} {'[RET]' if packet['retransmission'] else ''}")
             receiver_queue.put(packet)
 
     def receiver_listen_and_forward():
@@ -76,6 +80,7 @@ def flow_control_simulation(protocol: ProtocolsEnum, sequence_of_bits: int, numb
             packet_counter_updater_queue.put(1, block=True)
             if packet_counter in lost_packets:
                 continue
+            print(f"B -->> A: Ack {packet}")
             sender_queue.put(packet)
 
     # We're using a packet_counter_updater to avoid any concurrency problems that might arise
@@ -98,7 +103,6 @@ def flow_control_simulation(protocol: ProtocolsEnum, sequence_of_bits: int, numb
     threading.Thread(target=receiver_listen_and_forward).start()
     threading.Thread(target=packet_counter_updater).start()
     quit_signal.get(block=True)
-    print("quit received, ending")
 
 
 arguments = sys.argv
@@ -118,5 +122,5 @@ packet_counter = 1
 flow_control_simulation(protocol=arg_protocol, sequence_of_bits=arg_sequence_of_bits,
                         number_of_frames=arg_number_of_frames,
                         lost_packets=arg_lost_packets)
-print("end")
+print("\nend")
 exit()
