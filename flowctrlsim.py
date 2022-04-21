@@ -88,7 +88,7 @@ def flow_control_simulation(
             # if any packets went unacked
             for i in range(current_packet, next_packet_in_window):
                 packets[i].time += 1
-                if packets[i].time > 1:
+                if packets[i].time > 2:
                     if current_packet < next_packet_in_window:
                         print(f"Note over A : TIMEOUT ({current_packet + 1})")
                     next_packet_in_window = current_packet
@@ -101,12 +101,14 @@ def flow_control_simulation(
                 global_packet_counter += 1
                 packet = packets[next_packet_in_window]
                 if global_packet_counter in lost_packets:
-                    print(f"A -x B : ({packet.payload}) Frame {packet.sequence_number}")
+                    print(
+                        f"A -x B : ({packet.payload}) Frame {packet.sequence_number} {'(RET)' if packet.retransmission else ''}")
                 else:
                     print(
                         f"A ->> B : ({packet.payload}) Frame {packet.sequence_number} {'(RET)' if packet.retransmission else ''}"
                     )
                     sender_queue.put(packet)
+                packet.time = 1
                 packet.retransmission = True
                 next_packet_in_window += 1
 

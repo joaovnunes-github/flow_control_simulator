@@ -1,0 +1,109 @@
+flowctrlsim sr 2 6 0
+A ->> B : (1) Frame 0
+A ->> B : (2) Frame 1
+B -->> A : Ack 1
+B -->> A : Ack 2
+A ->> B : (3) Frame 2
+A ->> B : (4) Frame 3
+B -->> A : Ack 3
+B -->> A : Ack 0
+A ->> B : (5) Frame 0
+A ->> B : (6) Frame 1
+B -->> A : Ack 1
+B -->> A : Ack 2
+
+flowctrlsim sr 2 6 1
+A -x B : (1) Frame 0
+A ->> B : (2) Frame 1
+B -->> A : NAK 0
+A ->> B : (1) Frame 0 (RET)
+B -->> A : Ack 2
+A ->> B : (3) Frame 2
+A ->> B : (4) Frame 3
+B -->> A : Ack 3
+B -->> A : Ack 0
+A ->> B : (5) Frame 0
+A ->> B : (6) Frame 1
+B -->> A : Ack 1
+B -->> A : Ack 2
+
+flowctrlsim sr 2 6 1,2
+A -x B : (1) Frame 0
+A -x B : (2) Frame 1
+Note over A : TIMEOUT (1)
+A ->> B : (1) Frame 0 (RET)
+B -->> A : Ack 1
+A ->> B : (3) Frame 2
+B -->> A : NAK 1
+A ->> B : (2) Frame 1 (RET)
+B -->> A : Ack 3
+A ->> B : (4) Frame 3
+A ->> B : (5) Frame 0
+B -->> A : Ack 0
+B -->> A : Ack 1
+A ->> B : (6) Frame 1
+B -->> A : Ack 2
+
+flowctrlsim sr 2 6 1,2,4
+A -x B : (1) Frame 0
+A -x B : (2) Frame 1
+Note over A : TIMEOUT (1)
+A ->> B : (1) Frame 0 (RET)
+B --x A : Ack 1
+Note over A : TIMEOUT (2)
+A ->> B : (2) Frame 1 (RET)
+B -->> A : Ack 2
+A ->> B : (3) Frame 2
+A ->> B : (4) Frame 3
+B -->> A : Ack 3
+B -->> A : Ack 0
+A ->> B : (5) Frame 0
+A ->> B : (6) Frame 1
+B -->> A : Ack 1
+B -->> A : Ack 2
+
+flowctrlsim sr 2 6 1,2,4,6
+A -x B : (1) Frame 0
+A -x B : (2) Frame 1
+Note over A : TIMEOUT (1)
+A ->> B : (1) Frame 0 (RET)
+B --x A : Ack 1
+Note over A : TIMEOUT (2)
+A ->> B : (2) Frame 1 (RET)
+B --x A : Ack 2
+Note over A : TIMEOUT (1)
+A ->> B : (1) Frame 0 (RET)
+B -->> A : Ack 2
+A ->> B : (3) Frame 2
+A ->> B : (4) Frame 3
+B -->> A : Ack 3
+B -->> A : Ack 0
+A ->> B : (5) Frame 0
+A ->> B : (6) Frame 1
+B -->> A : Ack 1
+B -->> A : Ack 2
+
+flowctrlsim sr 3 10 3,7,8,11,15
+A ->> B : (1) Frame 0
+A ->> B : (2) Frame 1
+A -x B : (3) Frame 2
+A ->> B : (4) Frame 3
+B -->> A : Ack 1
+B -->> A : Ack 2
+B --x A : NAK 2
+A -x B : (5) Frame 4
+A ->> B : (6) Frame 5
+B -->> A : NAK 2
+B --x A : NAK 4
+A ->> B : (3) Frame 2 (RET)
+B -->> A : Ack 4
+A ->> B : (7) Frame 6
+A -x B : (8) Frame 7
+B -->> A : NAK 4
+A -->> B : (5) Frame 4 (RET)
+B -->> A : Ack 7
+A ->> B : (9) Frame 0
+A ->> B : (10) Frame 1
+B -->> A : NAK 7
+A -->> B : (8) Frame 7 (RET)
+B -->> A : Ack 2

@@ -1,0 +1,50 @@
+flowctrlsim saw 1 4 0
+A ->> B : (1) Frame 0
+B -->> A : Ack 1
+A ->> B : (2) Frame 1
+B -->> A : Ack 0
+A ->> B : (3) Frame 0
+B -->> A : Ack 1
+A ->> B : (4) Frame 1
+B -->> A : Ack 0
+
+flowctrlsim saw 1 4 1
+A -x B : (1) Frame 0
+Note over A : TIMEOUT (1)
+A ->> B : (1) Frame 0 (RET)
+B -->> A : Ack 1
+A ->> B : (2) Frame 1
+B -->> A : Ack 0
+A ->> B : (3) Frame 0
+B -->> A : Ack 1
+A ->> B : (4) Frame 1
+B -->> A : Ack 0
+
+flowctrlsim saw 1 4 1,3
+A -x B : (1) Frame 0
+Note over A : TIMEOUT (1)
+A ->> B : (1) Frame 0 (RET)
+B --x A : Ack 1
+Note over A : TIMEOUT (1)
+A ->> B : (1) Frame 0 (RET)
+B -->> A : Ack 1
+A ->> B : (2) Frame 1
+B -->> A : Ack 0
+A ->> B : (3) Frame 0
+B -->> A : Ack 1
+A ->> B : (4) Frame 1
+B -->> A : Ack 0
+
+flowctrlsim saw 1 4 3,6
+A ->> B : (1) Frame 0
+B -->> A : Ack 1
+A -x B : (2) Frame 1
+Note over A : TIMEOUT (2)
+A ->> B : (2) Frame 1 (RET)
+B -->> A : Ack 0
+A -x B : (3) Frame 0
+Note over A : TIMEOUT (3)
+A ->> B : (3) Frame 0 (RET)
+B -->> A : Ack 1
+A ->> B : (4) Frame 1
+B -->> A : Ack 0
