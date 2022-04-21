@@ -31,7 +31,7 @@ def flow_control_simulation(
         number_of_frames: int,
         lost_packets: List[int],
 ):
-    max_sequence_number = (2 ** sequence_of_bits)
+    max_sequence_number = 2 if protocol == ProtocolsEnum.STOP_AND_WAIT_ARQ else (2 ** sequence_of_bits)
 
     packets = []
     # create all packets for sending
@@ -61,12 +61,13 @@ def flow_control_simulation(
                 f"A ->> B : ({packet.payload}) Frame {packet.sequence_number} {'(RET)' if packet.retransmission else ''}"
             )
 
+            global_packet_counter += 1
             # receiver
             if global_packet_counter in lost_packets:
                 packet.retransmission = True
-                print(f"B --x A : Ack {packet}")
+                print(f"B --x A : Ack {packet.sequence_number % max_sequence_number}")
                 continue
-            print(f"B -->> A : Ack {packet.payload}")
+            print(f"B -->> A : Ack {packet.sequence_number % max_sequence_number}")
             current_packet += 1
 
     def gbn():
@@ -84,7 +85,6 @@ def flow_control_simulation(
                 if ack > current_packet:
                     current_packet = ack
 
-            first_timeout = True
             # if any packets went unacked
             for i in range(current_packet, next_packet_in_window):
                 packets[i].time += 1
@@ -121,7 +121,7 @@ def flow_control_simulation(
                         print(f"B --x A : Ack {ack % max_sequence_number}")
                     else:
                         print(f"B -->> A : Ack {ack % max_sequence_number}")
-                        receiver_queue.put(ack)  # Packet(payload=ack, sequence_number=ack % max_sequence_number))
+                        receiver_queue.put(ack)
 
     protocol_functions_dictionary = {
         ProtocolsEnum.STOP_AND_WAIT_ARQ: saw,
