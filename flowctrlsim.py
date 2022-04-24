@@ -15,14 +15,21 @@ class Packet:
     retransmission: bool
     sequence_number: int
     time: int = 0
+    max_time: int = 2
+    ack: str = None
+    timed_out = False
 
     def __init__(
-            self, payload: int = 1, retransmission: bool = False, sequence_number: int = 0, time: int = 0
+            self, payload: int = 1, retransmission: bool = False, sequence_number: int = 0, time: int = 0,
+            max_time: int = 2,
+            ack: str = None
     ):
         self.payload: int = payload
         self.retransmission: bool = retransmission
         self.sequence_number: int = sequence_number
         self.time: int = time
+        self.ack = ack
+        self.max_time = max_time
 
 
 def flow_control_simulation(
@@ -32,6 +39,9 @@ def flow_control_simulation(
         lost_packets: List[int],
 ):
     max_sequence_number = 2 if protocol == ProtocolsEnum.STOP_AND_WAIT_ARQ else (2 ** sequence_of_bits)
+    if protocol == ProtocolsEnum.SELECTIVE_REPEAT_ARQ:
+        sequence_of_bits -= 1
+    window_size = 2 if protocol == ProtocolsEnum.STOP_AND_WAIT_ARQ else (2 ** sequence_of_bits)
 
     packets = []
     # create all packets for sending
@@ -125,9 +135,129 @@ def flow_control_simulation(
                         print(f"B -->> A : Ack {ack % max_sequence_number}")
                         receiver_queue.put(ack)
 
+    def sr():
+        global global_packet_counter
+        current_packet = 0
+        current_ack = 0
+        next_packet_in_window = 0
+
+        sender_queue = Queue()
+        receiver_queue = Queue()
+        packets_to_resend = Queue()
+        packets_in_waiting = Queue()
+
+        while current_packet < number_of_frames:
+            # sender
+            while (
+                    not next_packet_in_window - current_packet >= window_size
+                    and not next_packet_in_window > frame_number
+            ):
+                global_packet_counter += 1
+                packet = packets[next_packet_in_window]
+                if global_packet_counter in lost_packets:
+                    print(
+                        f"A -x B : ({packet.payload}) Frame {packet.sequence_number} {'(RET)' if packet.retransmission else ''}")
+                else:
+                    print(
+                        f"A ->> B : ({packet.payload}) Frame {packet.sequence_number} {'(RET)' if packet.retransmission else ''}"
+                    )
+                    sender_queue.put(packet)
+                packet.time = 1
+                packet.max_time = 2
+                packet.retransmission = True
+                next_packet_in_window += 1
+
+            # receiver
+            # TODO
+            #   if acks miss
+            #   frame 1 ack misses
+            #   frame 2 ack misses
+            #   frame 1 arrives
+            #   cannot result in nak
+            while not sender_queue.empty():
+                packet = sender_queue.queue[0]
+                if packet.sequence_number == current_ack % max_sequence_number:
+                    sender_queue.get()
+                    global_packet_counter += 1
+                    current_ack += 1
+                    packet.ack = "ACK"
+                    most_cumulative_ack = packet
+
+                    # searches for possible next packages ready to ack in queue
+                    # if any are found, will advance as if acking packages but only save the last ack to be sent
+                    while not packets_in_waiting.empty():
+                        packet = packets_in_waiting.queue[0]
+
+                        if packet.sequence_number == current_ack % max_sequence_number:
+                            packets_in_waiting.get()
+                            current_ack += 1
+                            packet.ack = "ACK"
+                            most_cumulative_ack = packet
+                            continue
+                        break
+
+                    if global_packet_counter in lost_packets:
+                        print(f"B --x A : Ack {current_ack % max_sequence_number}")
+                    else:
+                        print(f"B -->> A : Ack {current_ack % max_sequence_number}")
+                        receiver_queue.put(most_cumulative_ack)
+                    continue
+
+                sender_queue.get()
+                packets_in_waiting.put(packet)
+                if global_packet_counter in lost_packets:
+                    print(f"B --x A : NAK {current_ack % max_sequence_number}")
+                else:
+                    print(f"B -->> A : NAK {current_ack % max_sequence_number}")
+                    receiver_queue.put(
+                        Packet(payload=current_ack, sequence_number=current_ack % max_sequence_number, ack="NAK"))
+
+            # check for acks
+            while not receiver_queue.empty():
+                ack: Packet = receiver_queue.get()
+                if ack.ack == "ACK":
+                    if ack.payload > current_packet:
+                        current_packet = ack.payload
+                    continue
+                current_packet = ack.payload
+                packets_to_resend.put(packets[ack.payload])
+
+            # if any packets went unacked
+            oldest_package = None
+            for i in range(current_packet, next_packet_in_window):
+                packets[i].time += 1
+                if packets[i].time > packets[i].max_time:
+                    if oldest_package is None:
+                        oldest_package = i
+                        continue
+                    if packets[oldest_package].time < packets[i].time:
+                        oldest_package = i
+
+            if oldest_package is not None:
+                if packets[oldest_package].timed_out and packets[oldest_package] not in packets_to_resend.queue:
+                    print(f"Note over A : TIMEOUT ({oldest_package + 1})")
+                    packets[oldest_package].time = 1
+                    packets_to_resend.put(packets[oldest_package])
+                else:
+                    packets[oldest_package].timed_out = True
+
+            # retransmit nack
+            while not packets_to_resend.empty():
+                global_packet_counter += 1
+                packet = packets_to_resend.get()
+                if global_packet_counter in lost_packets:
+                    print(
+                        f"A -x B : ({packet.payload}) Frame {packet.sequence_number} {'(RET)' if packet.retransmission else ''}")
+                else:
+                    print(
+                        f"A ->> B : ({packet.payload}) Frame {packet.sequence_number} {'(RET)' if packet.retransmission else ''}"
+                    )
+                    sender_queue.put(packet)
+
     protocol_functions_dictionary = {
         ProtocolsEnum.STOP_AND_WAIT_ARQ: saw,
         ProtocolsEnum.GO_BACK_N_ARQ: gbn,
+        ProtocolsEnum.SELECTIVE_REPEAT_ARQ: sr
     }
 
     protocol_functions_dictionary.get(protocol)()
