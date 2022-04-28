@@ -145,9 +145,11 @@ def flow_control_simulation(
         receiver_queue = Queue()
         packets_to_resend = Queue()
         packets_in_waiting = Queue()
+        ack_buffer = Queue()
+        nack_buffer = {}
 
         while current_packet < number_of_frames:
-            # sender
+            # We send the packages
             while (
                     not next_packet_in_window - current_packet >= window_size
                     and not next_packet_in_window > frame_number
@@ -167,21 +169,28 @@ def flow_control_simulation(
                 packet.retransmission = True
                 next_packet_in_window += 1
 
-            # receiver
-            # TODO
-            #   if acks miss
-            #   frame 1 ack misses
-            #   frame 2 ack misses
-            #   frame 1 arrives
-            #   cannot result in nak
+            # We receive the packages
             while not sender_queue.empty():
                 packet = sender_queue.queue[0]
+                # Check if this is the expected package
                 if packet.sequence_number == current_ack % max_sequence_number:
+                    # If this package had been NACKed, we remove it from the NACK buffer
+                    if packet.sequence_number in nack_buffer.keys():
+                        nack_buffer.pop(packet.sequence_number)
+
                     sender_queue.get()
                     global_packet_counter += 1
+
                     current_ack += 1
                     packet.ack = "ACK"
                     most_cumulative_ack = packet
+
+                    # We add the package to the ACK buffer
+                    if ack_buffer.qsize() <= window_size:
+                        ack_buffer.put(packet)
+                    else:
+                        ack_buffer.get()
+                        ack_buffer.put(packet)
 
                     # searches for possible next packages ready to ack in queue
                     # if any are found, will advance as if acking packages but only save the last ack to be sent
@@ -189,10 +198,21 @@ def flow_control_simulation(
                         packet = packets_in_waiting.queue[0]
 
                         if packet.sequence_number == current_ack % max_sequence_number:
+                            if packet.sequence_number in nack_buffer.keys():
+                                nack_buffer.pop(packet.sequence_number)
+
                             packets_in_waiting.get()
                             current_ack += 1
                             packet.ack = "ACK"
                             most_cumulative_ack = packet
+
+                            # adding to buffer
+                            if ack_buffer.qsize() <= window_size:
+                                ack_buffer.put(packet)
+                            else:
+                                ack_buffer.get()
+                                ack_buffer.put(packet)
+
                             continue
                         break
 
@@ -203,16 +223,51 @@ def flow_control_simulation(
                         receiver_queue.put(most_cumulative_ack)
                     continue
 
-                sender_queue.get()
-                packets_in_waiting.put(packet)
-                if global_packet_counter in lost_packets:
-                    print(f"B --x A : NAK {current_ack % max_sequence_number}")
-                else:
-                    print(f"B -->> A : NAK {current_ack % max_sequence_number}")
-                    receiver_queue.put(
-                        Packet(payload=current_ack, sequence_number=current_ack % max_sequence_number, ack="NAK"))
+                # In case we had already ACKED this package
+                # We will resend our last (most cumulative) ACK
+                elif packet.sequence_number in [buffered_packet.sequence_number
+                                                for buffered_packet in ack_buffer.queue]:
+                    sender_queue.get()
+                    global_packet_counter += 1
+                    if global_packet_counter in lost_packets:
+                        print(f"B --x A : Ack {current_ack % max_sequence_number}")
+                    else:
+                        print(f"B -->> A : Ack {current_ack % max_sequence_number}")
+                        receiver_queue.put(ack_buffer.queue[-1])
+                    continue
 
-            # check for acks
+                # If it is not the expected, nor a package we already ACKed
+                # We send a NACK for the missing packages
+                # And add this package to the waiting list
+                else:
+                    # If there are packages in waiting we check to see if extra NACKs need to be added
+                    if not packets_in_waiting.empty():
+                        i = packets_in_waiting.queue[-1].sequence_number
+                        while i != packet.sequence_number:
+                            if i not in [packet_in_waiting.sequence_number for packet_in_waiting in
+                                         packets_in_waiting.queue]:
+                                nack_buffer[i] = Packet(payload=i, sequence_number=i % max_sequence_number, ack="nak")
+                            i = (i + 1) % max_sequence_number
+                    # If there is no package in waiting we add a single NACK
+                    else:
+                        nack_buffer[current_ack % max_sequence_number] = Packet(payload=current_ack,
+                                                                                sequence_number=current_ack % max_sequence_number,
+                                                                                ack="NAK")
+
+                    # After managing the buffers, we add the package to the waiting list and send NACKs
+                    sender_queue.get()
+                    packets_in_waiting.put(packet)
+                    if sender_queue.empty():
+                        for packet in nack_buffer.values():
+                            global_packet_counter += 1
+                            if global_packet_counter in lost_packets:
+                                print(f"B --x A : NAK {packet.sequence_number}")
+                            else:
+                                print(f"B -->> A : NAK {packet.sequence_number}")
+                                receiver_queue.put(packet)
+
+            # After the receiver deals with the sent packages, we check the ACKs
+            # Any packets not ACKed will be added to a resend list
             while not receiver_queue.empty():
                 ack: Packet = receiver_queue.get()
                 if ack.ack == "ACK":
@@ -222,26 +277,30 @@ def flow_control_simulation(
                 current_packet = ack.payload
                 packets_to_resend.put(packets[ack.payload])
 
-            # if any packets went unacked
-            oldest_package = None
+            # After that, we manage the timers for packets that have not been ACKed/NACKed
+            oldest_expired_package = None
             for i in range(current_packet, next_packet_in_window):
                 packets[i].time += 1
                 if packets[i].time > packets[i].max_time:
-                    if oldest_package is None:
-                        oldest_package = i
+                    if oldest_expired_package is None:
+                        oldest_expired_package = i
                         continue
-                    if packets[oldest_package].time < packets[i].time:
-                        oldest_package = i
+                    if packets[oldest_expired_package].time < packets[i].time:
+                        oldest_expired_package = i
 
-            if oldest_package is not None:
-                if packets[oldest_package].timed_out and packets[oldest_package] not in packets_to_resend.queue:
-                    print(f"Note over A : TIMEOUT ({oldest_package + 1})")
-                    packets[oldest_package].time = 1
-                    packets_to_resend.put(packets[oldest_package])
+            # If there are expired packages, we get the oldest one
+            # If it is not in queue for resend we mark it as timed out
+            # It will effectively time out by the next iteration
+            if oldest_expired_package is not None:
+                if packets[oldest_expired_package].timed_out and packets[
+                    oldest_expired_package] not in packets_to_resend.queue:
+                    print(f"Note over A : TIMEOUT ({oldest_expired_package + 1})")
+                    packets[oldest_expired_package].time = 1
+                    packets_to_resend.put(packets[oldest_expired_package])
                 else:
-                    packets[oldest_package].timed_out = True
+                    packets[oldest_expired_package].timed_out = True
 
-            # retransmit nack
+            # Before starting the next iteration, we resend packages marked for resending
             while not packets_to_resend.empty():
                 global_packet_counter += 1
                 packet = packets_to_resend.get()
