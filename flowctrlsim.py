@@ -281,7 +281,7 @@ def flow_control_simulation(
             oldest_expired_package = None
             for i in range(current_packet, next_packet_in_window):
                 packets[i].time += 1
-                if packets[i].time > packets[i].max_time:
+                if packets[i].time > packets[i].max_time and packets[i] not in packets_to_resend.queue:
                     if oldest_expired_package is None:
                         oldest_expired_package = i
                         continue
@@ -292,8 +292,7 @@ def flow_control_simulation(
             # If it is not in queue for resend we mark it as timed out
             # It will effectively time out by the next iteration
             if oldest_expired_package is not None:
-                if packets[oldest_expired_package].timed_out and packets[
-                    oldest_expired_package] not in packets_to_resend.queue:
+                if packets[oldest_expired_package].timed_out:
                     print(f"Note over A : TIMEOUT ({oldest_expired_package + 1})")
                     packets[oldest_expired_package].time = 1
                     packets_to_resend.put(packets[oldest_expired_package])
@@ -342,5 +341,4 @@ flow_control_simulation(
     number_of_frames=arg_number_of_frames,
     lost_packets=arg_lost_packets,
 )
-print("\nend")
 exit()
