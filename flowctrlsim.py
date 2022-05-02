@@ -75,9 +75,10 @@ def flow_control_simulation(
             # receiver
             if global_packet_counter in lost_packets:
                 packet.retransmission = True
-                print(f"B --x A : Ack {packet.sequence_number % max_sequence_number}")
+                print(f"B --x A : Ack {(packet.sequence_number + 1) % max_sequence_number}")
+                print(f"Note over A : TIMEOUT ({packet.payload})")
                 continue
-            print(f"B -->> A : Ack {packet.sequence_number % max_sequence_number}")
+            print(f"B -->> A : Ack {(packet.sequence_number + 1) % max_sequence_number}")
             current_packet += 1
 
     def gbn():
